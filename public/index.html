@@ -1,0 +1,798 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🦞 Lobster Tank — Viernes Activity Monitor</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #000d1a; overflow: hidden; font-family: 'Courier New', monospace; }
+  canvas { display: block; }
+
+  /* ---------- UI panels ---------- */
+  #title {
+    position: fixed; top: 16px; left: 16px; z-index: 100;
+    color: rgba(120, 210, 255, 0.92);
+    text-shadow: 0 0 12px rgba(80, 180, 255, 0.6);
+    pointer-events: none;
+  }
+  #title h1 { font-size: 20px; letter-spacing: 1px; }
+  #title p  { font-size: 11px; opacity: 0.55; margin-top: 2px; }
+
+  #ui {
+    position: fixed; top: 16px; right: 16px; z-index: 100;
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .btn {
+    background: rgba(0, 25, 50, 0.85);
+    border: 1px solid rgba(80, 180, 255, 0.3);
+    color: rgba(120, 210, 255, 0.85);
+    padding: 7px 14px; border-radius: 6px;
+    cursor: pointer; font-family: inherit; font-size: 12px;
+    transition: all 0.2s; backdrop-filter: blur(6px);
+    letter-spacing: 0.5px;
+  }
+  .btn:hover { background: rgba(0, 50, 90, 0.9); border-color: rgba(80, 180, 255, 0.6); }
+  .btn.active { background: rgba(0, 70, 120, 0.9); border-color: rgba(80, 180, 255, 0.8); color: #fff; }
+
+  #status {
+    position: fixed; bottom: 16px; left: 16px; z-index: 100;
+    color: rgba(120, 210, 255, 0.5); font-size: 11px;
+  }
+
+  /* ---------- Legend ---------- */
+  #legend {
+    position: fixed; bottom: 40px; left: 16px; z-index: 100;
+    display: flex; flex-direction: column; gap: 5px;
+  }
+  .leg { display: flex; align-items: center; gap: 7px; font-size: 10px; color: rgba(120,210,255,0.65); }
+  .dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+
+  /* ---------- Event log ---------- */
+  #log {
+    position: fixed; bottom: 16px; right: 16px; z-index: 100;
+    width: 200px; display: flex; flex-direction: column; gap: 3px;
+    align-items: flex-end;
+  }
+  .log-row {
+    font-size: 11px; padding: 3px 8px; border-radius: 3px;
+    border-left: 2px solid currentColor;
+    background: rgba(0, 20, 40, 0.75); backdrop-filter: blur(4px);
+    animation: slideIn 0.25s ease;
+    white-space: nowrap;
+  }
+  @keyframes slideIn { from { opacity: 0; transform: translateX(8px); } to { opacity: 1; transform: none; } }
+
+  /* ---------- Lobster labels ---------- */
+  .lob-label {
+    position: fixed; z-index: 50; pointer-events: none; display: none;
+    background: rgba(0, 15, 30, 0.88); border: 1px solid rgba(80,180,255,0.4);
+    color: #ddf; padding: 3px 9px; border-radius: 4px; font-size: 11px;
+    white-space: nowrap; backdrop-filter: blur(4px);
+    transform: translate(-50%, -130%);
+  }
+</style>
+</head>
+<body>
+
+<div id="title"><h1>🦞 Lobster Tank</h1><p>Viernes Activity Monitor</p></div>
+
+<div id="ui">
+  <button class="btn active" id="btn-labels">Labels ON</button>
+  <button class="btn"        id="btn-demo">Demo Mode</button>
+</div>
+
+<div id="legend">
+  <div class="leg"><div class="dot" style="background:#ff5500"></div>Main session</div>
+  <div class="leg"><div class="dot" style="background:#ffaa00"></div>Cron job</div>
+  <div class="leg"><div class="dot" style="background:#bb44ff"></div>Subagent</div>
+</div>
+
+<div id="status">🔌 Connecting…</div>
+<div id="log"></div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.168.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.168.0/examples/jsm/"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+// ═══════════════════════════════════════════════════════
+//  CONFIG
+// ═══════════════════════════════════════════════════════
+const TANK_W = 34, TANK_D = 34, TANK_H = 13;
+const LOBSTER_COUNT = 6;
+const LOBSTER_SPEED  = 4.5;   // units / sec while going to structure
+const WANDER_SPEED   = 0.9;   // units / sec while idle
+const VISIT_DURATION = 2.8;   // seconds parked at a structure
+
+const SOURCE_COLOR = { main: 0xff5500, cron: 0xffaa00, subagent: 0xbb44ff };
+const SOURCE_CSS   = { main: '#ff6633', cron: '#ffaa00', subagent: '#cc55ff' };
+
+const TOOL_STRUCTURE = {
+  web_search:'internet', web_fetch:'internet', browser:'internet',
+  Read:'library', Write:'library', Edit:'library',
+  exec:'terminal', process:'terminal',
+  memory_search:'braincoral', memory_get:'braincoral',
+  message:'signalbuoy', whatsapp_login:'signalbuoy', tts:'signalbuoy',
+  sessions_spawn:'hatchery', subagents:'hatchery', agents_list:'hatchery',
+  sessions_list:'hatchery', sessions_history:'hatchery', sessions_send:'hatchery',
+  cron:'clocktower',
+  gateway:'serverrack', session_status:'serverrack',
+  image:'obsdome', pdf:'obsdome', nodes:'obsdome', canvas:'obsdome',
+};
+
+const STRUCT_DEF = {
+  internet:   { x: 12,  z: 12,  emoji:'🌐', label:'🌐 Internet'    },
+  library:    { x:-12,  z: 12,  emoji:'📁', label:'📁 Library'      },
+  terminal:   { x: 12,  z:-12,  emoji:'💻', label:'💻 Terminal'     },
+  braincoral: { x:-12,  z:-12,  emoji:'🧠', label:'🧠 Brain Coral'  },
+  signalbuoy: { x:  0,  z: 14,  emoji:'📱', label:'📱 Signal'       },
+  hatchery:   { x: 14,  z:  0,  emoji:'🤖', label:'🤖 Hatchery'     },
+  clocktower: { x:-14,  z:  0,  emoji:'⏰', label:'⏰ Clock'         },
+  serverrack: { x:  0,  z:-14,  emoji:'🖥️', label:'🖥️ Server Rack' },
+  obsdome:    { x:  0,  z:  0,  emoji:'🔭', label:'🔭 Obs Dome'     },
+};
+
+// ═══════════════════════════════════════════════════════
+//  RENDERER + SCENE
+// ═══════════════════════════════════════════════════════
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 0.85;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x001020);
+scene.fog = new THREE.FogExp2(0x001428, 0.016);
+
+const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.1, 200);
+camera.position.set(0, 22, 38);
+camera.lookAt(0, 0, 0);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0, 3, 0);
+controls.enableDamping = true;
+controls.dampingFactor = 0.07;
+controls.minDistance = 8;
+controls.maxDistance = 80;
+controls.maxPolarAngle = Math.PI / 2.05;
+controls.update();
+
+// Lights
+scene.add(new THREE.AmbientLight(0x002244, 2.0));
+
+const sun = new THREE.DirectionalLight(0x5599cc, 2.2);
+sun.position.set(8, 25, 10);
+sun.castShadow = true;
+Object.assign(sun.shadow.camera, { left:-22, right:22, top:22, bottom:-22, near:1, far:70 });
+sun.shadow.mapSize.setScalar(1024);
+scene.add(sun);
+
+const causticLight = new THREE.PointLight(0x1155aa, 4, 35);
+causticLight.position.set(5, 11, 5);
+scene.add(causticLight);
+
+// ═══════════════════════════════════════════════════════
+//  TANK
+// ═══════════════════════════════════════════════════════
+(function buildTank() {
+  // Glass walls
+  const glassMat = new THREE.MeshPhongMaterial({
+    color: 0x0066aa, transparent: true, opacity: 0.10,
+    side: THREE.BackSide, depthWrite: false,
+  });
+  const box = new THREE.Mesh(new THREE.BoxGeometry(TANK_W, TANK_H, TANK_D), glassMat);
+  box.position.y = TANK_H / 2;
+  scene.add(box);
+
+  // Sandy floor
+  const floorGeo = new THREE.PlaneGeometry(TANK_W, TANK_D, 24, 24);
+  const fPos = floorGeo.attributes.position;
+  for (let i = 0; i < fPos.count; i++) {
+    fPos.setY(i, Math.sin(fPos.getX(i) * 0.5) * 0.12 + Math.sin(fPos.getZ(i) * 0.7) * 0.08);
+  }
+  floorGeo.computeVertexNormals();
+  const floor = new THREE.Mesh(floorGeo, new THREE.MeshPhongMaterial({ color: 0xc8a040, shininess: 8 }));
+  floor.rotation.x = -Math.PI / 2;
+  floor.receiveShadow = true;
+  scene.add(floor);
+
+  // Water surface
+  const waterGeo = new THREE.PlaneGeometry(TANK_W, TANK_D, 32, 32);
+  const water = new THREE.Mesh(waterGeo, new THREE.MeshPhongMaterial({
+    color: 0x0077cc, transparent: true, opacity: 0.30, shininess: 220,
+  }));
+  water.rotation.x = -Math.PI / 2;
+  water.position.y = TANK_H;
+  scene.add(water);
+
+  // Animate water in the loop
+  window._waterGeo = waterGeo;
+})();
+
+// ═══════════════════════════════════════════════════════
+//  BUBBLES
+// ═══════════════════════════════════════════════════════
+const bubbles = [];
+const bubbleMat = new THREE.MeshPhongMaterial({ color: 0xaaddff, transparent: true, opacity: 0.35 });
+
+for (let i = 0; i < 28; i++) {
+  const r = 0.04 + Math.random() * 0.1;
+  const mesh = new THREE.Mesh(new THREE.SphereGeometry(r, 6, 4), bubbleMat);
+  const resetBubble = m => {
+    m.position.set((Math.random()-0.5)*TANK_W*0.8, Math.random()*2.5, (Math.random()-0.5)*TANK_D*0.8);
+  };
+  resetBubble(mesh);
+  scene.add(mesh);
+  bubbles.push({ mesh, speed: 0.5 + Math.random()*1.6, wobble: Math.random()*Math.PI*2, reset: resetBubble });
+}
+
+// ═══════════════════════════════════════════════════════
+//  HELPERS
+// ═══════════════════════════════════════════════════════
+const phong = (color, opts={}) => new THREE.MeshPhongMaterial({ color, flatShading: true, ...opts });
+
+// ═══════════════════════════════════════════════════════
+//  STRUCTURES
+// ═══════════════════════════════════════════════════════
+const structures = {};
+
+function buildStructures() {
+  for (const [id, def] of Object.entries(STRUCT_DEF)) {
+    const g = new THREE.Group();
+    g.position.set(def.x, 0, def.z);
+
+    switch (id) {
+      case 'internet':   buildInternet(g);   break;
+      case 'library':    buildLibrary(g);    break;
+      case 'terminal':   buildTerminal(g);   break;
+      case 'braincoral': buildBrainCoral(g); break;
+      case 'signalbuoy': buildSignalBuoy(g); break;
+      case 'hatchery':   buildHatchery(g);   break;
+      case 'clocktower': buildClockTower(g); break;
+      case 'serverrack': buildServerRack(g); break;
+      case 'obsdome':    buildObsDome(g);    break;
+    }
+    scene.add(g);
+
+    // Landing spot: nudge toward center of tank from each structure
+    const worldPos = new THREE.Vector3(def.x, 0.5, def.z);
+    const toward   = new THREE.Vector3().sub(worldPos).normalize().multiplyScalar(2.8);
+    const landPos  = worldPos.clone().add(toward);
+
+    const labelEl = document.createElement('div');
+    labelEl.className = 'lob-label';
+    document.body.appendChild(labelEl);
+
+    structures[id] = { group: g, landPos, labelEl, def };
+  }
+}
+
+function buildInternet(g) {
+  g.add(mesh(new THREE.CylinderGeometry(0.55, 0.75, 0.45, 8), phong(0x336688)));
+  const tower = mesh(new THREE.CylinderGeometry(0.22, 0.32, 4.2, 8), phong(0x44aacc));
+  tower.position.y = 2.5; tower.castShadow = true; g.add(tower);
+  const dish = mesh(new THREE.CylinderGeometry(1.3, 0.1, 0.15, 12), phong(0x88bbdd));
+  dish.position.set(0, 5, 0); dish.rotation.x = 0.5; g.add(dish);
+  const spike = mesh(new THREE.CylinderGeometry(0.03, 0.06, 1, 5), phong(0xaaccee));
+  spike.position.y = 5.5; g.add(spike);
+  const blink = mesh(new THREE.SphereGeometry(0.1, 6, 4),
+    new THREE.MeshPhongMaterial({ color:0xff2200, emissive:0xff2200, emissiveIntensity:1 }));
+  blink.position.y = 6.0; g.add(blink);
+  g.userData.blink = blink;
+}
+
+function buildLibrary(g) {
+  g.add(mesh(new THREE.BoxGeometry(3.2, 0.3, 2.2), phong(0x886644)));
+  for (const x of [-1.3, 1.3]) {
+    const p = mesh(new THREE.BoxGeometry(0.38, 3.8, 0.38), phong(0x997755));
+    p.position.set(x, 2, 0); p.castShadow = true; g.add(p);
+  }
+  const top = mesh(new THREE.BoxGeometry(3.2, 0.55, 0.5), phong(0xaa8866));
+  top.position.y = 4.0; g.add(top);
+  const colors = [0xcc3333, 0x337733, 0x3355cc, 0xcc9933, 0x993399, 0x338888];
+  for (let i = 0; i < 6; i++) {
+    const b = mesh(new THREE.BoxGeometry(0.22, 0.5 + Math.random()*0.4, 0.3), phong(colors[i]));
+    b.position.set(-0.7 + i*0.28, 0.5, 0.3); g.add(b);
+  }
+}
+
+function buildTerminal(g) {
+  const rm = phong(0x1a1a22);
+  const r1 = mesh(new THREE.DodecahedronGeometry(1.3, 0), rm); r1.scale.y = 1.4; r1.castShadow = true; g.add(r1);
+  const r2 = mesh(new THREE.DodecahedronGeometry(0.75, 0), rm); r2.position.set(0.9, 0.2, 0.6); g.add(r2);
+  const screen = mesh(new THREE.PlaneGeometry(1.1, 0.75),
+    new THREE.MeshPhongMaterial({ color:0x00ff44, emissive:0x00bb22, emissiveIntensity:0.9, transparent:true, opacity:0.92 }));
+  screen.position.set(0, 2.2, 0); screen.rotation.x = -0.28; g.add(screen);
+  const glow = new THREE.PointLight(0x00ff44, 2.5, 6); glow.position.y = 2.5; g.add(glow);
+  g.userData.termGlow = glow;
+}
+
+function buildBrainCoral(g) {
+  const cols = [0xff6699, 0xee5588, 0xff88aa, 0xcc4477, 0xff99bb, 0xee3377, 0xdd5599];
+  const pts  = [[0,0,0],[0.8,0.3,0.6],[-0.7,0.2,0.7],[0.3,0.5,-0.8],[-0.4,0.4,-0.6],[0,0.75,0.2],[0.6,-0.1,-0.35]];
+  pts.forEach(([x,y,z], i) => {
+    const r = 0.38 + Math.random()*0.5;
+    const b = mesh(new THREE.SphereGeometry(r, 7, 5), phong(cols[i % cols.length]));
+    b.position.set(x, y+0.5, z); b.castShadow = true; g.add(b);
+  });
+  const glow = new THREE.PointLight(0xff4488, 1.8, 7); glow.position.y = 1.5; g.add(glow);
+}
+
+function buildSignalBuoy(g) {
+  const base = mesh(new THREE.CylinderGeometry(0.4, 0.52, 1.6, 8), phong(0xdd2222));
+  base.position.y = 0.8; base.castShadow = true; g.add(base);
+  const top = mesh(new THREE.ConeGeometry(0.52, 1.1, 8), phong(0xeeeeee));
+  top.position.y = 2.2; g.add(top);
+  const ring = mesh(new THREE.TorusGeometry(0.62, 0.09, 6, 16), phong(0xffdd00));
+  ring.position.y = 1.1; g.add(ring);
+  const blink = mesh(new THREE.SphereGeometry(0.14, 6, 4),
+    new THREE.MeshPhongMaterial({ color:0xffee00, emissive:0xffcc00, emissiveIntensity:1 }));
+  blink.position.y = 2.9; g.add(blink);
+  g.userData.blink = blink;
+}
+
+function buildHatchery(g) {
+  const domeMat = new THREE.MeshPhongMaterial({ color:0x88ccee, transparent:true, opacity:0.3, side:THREE.DoubleSide, shininess:200 });
+  g.add(mesh(new THREE.SphereGeometry(1.6, 14, 8, 0, Math.PI*2, 0, Math.PI/2), domeMat));
+  const ringM = phong(0x669999);
+  g.add(mesh(new THREE.TorusGeometry(1.6, 0.1, 6, 20), ringM));
+  const eggC = [0xff8844, 0xffcc44, 0xff55aa, 0x44ffcc, 0xffaa66, 0xaaffee, 0xff66bb, 0x88ffdd];
+  for (let i = 0; i < 8; i++) {
+    const a = (i/8)*Math.PI*2;
+    const e = mesh(new THREE.SphereGeometry(0.2, 6, 5), phong(eggC[i]));
+    e.position.set(Math.cos(a)*0.65, 0.28, Math.sin(a)*0.65); e.scale.y = 1.35; g.add(e);
+  }
+  const glow = new THREE.PointLight(0x44ffcc, 1.5, 6); glow.position.y = 0.5; g.add(glow);
+}
+
+function buildClockTower(g) {
+  const tower = mesh(new THREE.BoxGeometry(1.3, 4.5, 1.3), phong(0x555577));
+  tower.position.y = 2.25; tower.castShadow = true; g.add(tower);
+  const face = mesh(new THREE.CircleGeometry(0.52, 14), phong(0xeeeedd, { flatShading:false }));
+  face.position.set(0, 3.5, 0.67); g.add(face);
+  const gear = mesh(new THREE.TorusGeometry(0.75, 0.22, 4, 14), phong(0xaaaaaa));
+  gear.position.y = 4.8; g.add(gear);
+  g.userData.gear = gear;
+  // Clock hands
+  const hand1 = mesh(new THREE.BoxGeometry(0.06, 0.45, 0.04), phong(0x222222, { flatShading:false }));
+  hand1.position.set(0, 3.65, 0.69); g.add(hand1); g.userData.hand1 = hand1;
+  const hand2 = mesh(new THREE.BoxGeometry(0.04, 0.3, 0.04), phong(0x333333, { flatShading:false }));
+  hand2.position.set(0, 3.55, 0.70); g.add(hand2); g.userData.hand2 = hand2;
+}
+
+function buildServerRack(g) {
+  const rack = mesh(new THREE.BoxGeometry(2.2, 4, 1.1), phong(0x222233));
+  rack.position.y = 2; rack.castShadow = true; g.add(rack);
+  const ledColors = [0x00ff44, 0x00ff44, 0xff4400, 0x00ff44, 0x00aaff];
+  for (let i = 0; i < 5; i++) {
+    const unit = mesh(new THREE.BoxGeometry(1.9, 0.44, 0.9), phong(0x333355));
+    unit.position.y = 0.5 + i*0.6; g.add(unit);
+    const led = mesh(new THREE.SphereGeometry(0.055, 4, 4),
+      new THREE.MeshPhongMaterial({ color:ledColors[i], emissive:ledColors[i], emissiveIntensity:0.9 }));
+    led.position.set(0.8, 0.5+i*0.6, 0.48); g.add(led);
+  }
+  const glow = new THREE.PointLight(0x2244ff, 1.8, 6); glow.position.y = 3; g.add(glow);
+}
+
+function buildObsDome(g) {
+  const domeMat = new THREE.MeshPhongMaterial({ color:0x88eeff, transparent:true, opacity:0.22, side:THREE.DoubleSide, shininess:300 });
+  g.add(mesh(new THREE.SphereGeometry(2.2, 18, 10, 0, Math.PI*2, 0, Math.PI/2), domeMat));
+  g.add(mesh(new THREE.TorusGeometry(2.2, 0.14, 6, 22), phong(0x66aabb)));
+  const lens = mesh(new THREE.CylinderGeometry(0.42, 0.55, 0.65, 12), phong(0x1a1a2a));
+  lens.position.y = 0.5; g.add(lens);
+  const glass = mesh(new THREE.CircleGeometry(0.4, 12),
+    new THREE.MeshPhongMaterial({ color:0x4455ff, transparent:true, opacity:0.75, shininess:350, flatShading:false }));
+  glass.position.set(0, 0.84, 0); glass.rotation.x = -Math.PI/2; g.add(glass);
+}
+
+function mesh(geo, mat) { const m = new THREE.Mesh(geo, mat); m.castShadow = true; return m; }
+
+buildStructures();
+
+// ═══════════════════════════════════════════════════════
+//  LOBSTER FACTORY
+// ═══════════════════════════════════════════════════════
+function createLobster(hexColor) {
+  const outer = new THREE.Group(); // animation target
+  const g     = new THREE.Group(); // inner geometry (head faces +Z)
+  g.rotation.y = -Math.PI / 2;    // model built along +X, rotate so head → +Z
+  outer.add(g);
+
+  const c   = new THREE.Color(hexColor);
+  const cd  = c.clone().multiplyScalar(0.55);
+  const mat  = new THREE.MeshPhongMaterial({ color: c,  flatShading: true });
+  const matD = new THREE.MeshPhongMaterial({ color: cd, flatShading: true });
+  const matE = new THREE.MeshPhongMaterial({ color: 0x111111, shininess:200 });
+  const matW = new THREE.MeshPhongMaterial({ color: 0xffffff });
+
+  const M = (geo, m) => { const o = new THREE.Mesh(geo, m); o.castShadow = true; return o; };
+
+  // Body (elongated sphere along X)
+  const body = M(new THREE.SphereGeometry(0.55, 8, 6), mat);
+  body.scale.set(1.65, 0.78, 0.92); g.add(body);
+
+  // Head
+  const head = M(new THREE.SphereGeometry(0.42, 8, 6), mat);
+  head.position.set(0.88, 0.05, 0); head.scale.set(1, 0.88, 0.96); g.add(head);
+
+  // Tail segments (behind body, decreasing size)
+  const tailX = [-1.0, -1.42, -1.78];
+  const tailY = [-0.06, -0.2, -0.38];
+  const tailS = [[0.56,0.62,0.82],[0.46,0.54,0.76],[0.38,0.46,0.7]];
+  for (let i = 0; i < 3; i++) {
+    const s = M(new THREE.SphereGeometry(0.48, 7, 5), mat);
+    s.position.set(tailX[i], tailY[i], 0);
+    s.scale.set(...tailS[i]); g.add(s);
+  }
+
+  // Tail fan
+  for (const z of [-0.32, 0, 0.32]) {
+    const fin = M(new THREE.BoxGeometry(0.38, 0.09, 0.27), mat);
+    fin.position.set(-2.12, -0.55, z); fin.rotation.z = z * 0.8; g.add(fin);
+  }
+
+  // Claws (left and right — ±Z sides)
+  const claws = [];
+  for (const side of [-1, 1]) {
+    const cg = createClaw(mat, matD);
+    cg.position.set(1.1, 0, side * 0.62);
+    cg.rotation.y = side * 0.2;
+    g.add(cg); claws.push(cg);
+  }
+  outer.userData.claws = claws;
+
+  // Walking legs
+  for (let i = 0; i < 3; i++) {
+    for (const side of [-1, 1]) {
+      const leg = M(new THREE.CylinderGeometry(0.033, 0.024, 0.65, 4), matD);
+      leg.position.set(0.32 - i*0.36, -0.36, side * 0.52);
+      leg.rotation.z = side * 0.38; leg.rotation.x = 0.15 + i*0.08;
+      g.add(leg);
+    }
+  }
+
+  // Eye stalks + eyes
+  for (const side of [-1, 1]) {
+    const stalk = M(new THREE.CylinderGeometry(0.038, 0.038, 0.28, 4), matD);
+    stalk.position.set(1.14, 0.3, side * 0.23); stalk.rotation.z = -side * 0.35;
+    g.add(stalk);
+    const eye = M(new THREE.SphereGeometry(0.1, 6, 6), matE);
+    eye.position.set(1.15 + side*0.05, 0.48, side * 0.23); g.add(eye);
+    const hi = M(new THREE.SphereGeometry(0.036, 4, 4), matW);
+    hi.position.set(1.16 + side*0.05 + 0.06, 0.51, side * 0.23 + 0.04); g.add(hi);
+  }
+
+  // Antennae (thin curves)
+  for (const side of [-1, 1]) {
+    const pts = [
+      new THREE.Vector3(1.1, 0.35, side*0.18),
+      new THREE.Vector3(1.65, 0.7, side*0.38),
+      new THREE.Vector3(2.4, 0.85, side*0.6),
+      new THREE.Vector3(3.1, 0.68, side*0.75),
+    ];
+    const ant = M(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 10, 0.024, 4, false), matD);
+    g.add(ant);
+  }
+
+  // Store color data for recoloring
+  outer.userData.mat  = mat;
+  outer.userData.matD = matD;
+
+  return outer;
+}
+
+function createClaw(mat, matD) {
+  const g = new THREE.Group();
+  const M = (geo, m) => { const o = new THREE.Mesh(geo, m); o.castShadow = true; return o; };
+  const arm = M(new THREE.CylinderGeometry(0.07, 0.1, 0.72, 5), mat);
+  arm.rotation.z = Math.PI/2; arm.position.set(0.36, 0, 0); g.add(arm);
+  const wrist = M(new THREE.SphereGeometry(0.16, 6, 5), mat);
+  wrist.position.set(0.82, 0, 0); g.add(wrist);
+  const palm = M(new THREE.SphereGeometry(0.22, 7, 5), mat);
+  palm.scale.set(1.6, 0.78, 0.88); palm.position.set(1.22, 0, 0); g.add(palm);
+  const p1 = M(new THREE.BoxGeometry(0.44, 0.11, 0.13), mat);
+  p1.position.set(1.58, 0.13, 0); p1.rotation.z = 0.38; g.add(p1);
+  const p2 = M(new THREE.BoxGeometry(0.37, 0.1, 0.13), matD);
+  p2.position.set(1.52, -0.1, 0); p2.rotation.z = -0.38; g.add(p2);
+  return g;
+}
+
+function recolorLobster(lobster, hexColor) {
+  const c  = new THREE.Color(hexColor);
+  const cd = c.clone().multiplyScalar(0.55);
+  lobster.userData.mat.color.set(c);
+  lobster.userData.matD.color.set(cd);
+}
+
+// ═══════════════════════════════════════════════════════
+//  LOBSTER POOL
+// ═══════════════════════════════════════════════════════
+const pool = [];
+
+(function spawnPool() {
+  for (let i = 0; i < LOBSTER_COUNT; i++) {
+    const lob = createLobster(SOURCE_COLOR.main);
+    lob.scale.setScalar(0.78);
+    const x = (Math.random()-0.5) * TANK_W * 0.45;
+    const z = (Math.random()-0.5) * TANK_D * 0.45;
+    lob.position.set(x, 0.42, z);
+    lob.rotation.y = Math.random() * Math.PI * 2;
+    scene.add(lob);
+
+    const labelEl = document.createElement('div');
+    labelEl.className = 'lob-label';
+    document.body.appendChild(labelEl);
+
+    pool.push({
+      mesh:        lob,
+      state:       'idle',            // 'idle' | 'moving' | 'visiting'
+      target:      null,
+      wanderTgt:   new THREE.Vector3(x, 0.42, z),
+      wanderTimer: Math.random() * 3,
+      visitTimer:  0,
+      tool:        null,
+      source:      'main',
+      labelEl,
+      bobPhase:    Math.random() * Math.PI * 2,
+    });
+  }
+})();
+
+function getIdleLobster() {
+  const idle = pool.filter(l => l.state === 'idle');
+  if (idle.length) return idle[Math.floor(Math.random() * idle.length)];
+  const vis  = pool.filter(l => l.state === 'visiting');
+  return vis.length ? vis[0] : null;
+}
+
+function dispatchTool(toolName, source) {
+  const sid = TOOL_STRUCTURE[toolName];
+  if (!sid || !structures[sid]) return;
+  const lobster = getIdleLobster();
+  if (!lobster) return;
+
+  recolorLobster(lobster.mesh, SOURCE_COLOR[source] || SOURCE_COLOR.main);
+  lobster.source    = source;
+  lobster.tool      = toolName;
+  lobster.state     = 'moving';
+  lobster.target    = structures[sid].landPos.clone();
+  lobster.labelEl.textContent = `${structures[sid].def.emoji} ${toolName}`;
+
+  addLog(toolName, source);
+}
+
+// ═══════════════════════════════════════════════════════
+//  LOG PANEL
+// ═══════════════════════════════════════════════════════
+const logEl   = document.getElementById('log');
+const logRows = [];
+
+function addLog(tool, source) {
+  const el = document.createElement('div');
+  el.className  = 'log-row';
+  el.style.color = SOURCE_CSS[source] || SOURCE_CSS.main;
+  el.textContent = tool;
+  logEl.appendChild(el);
+  logRows.push(el);
+  while (logRows.length > 7) logRows.shift().remove();
+}
+
+// ═══════════════════════════════════════════════════════
+//  ANIMATION
+// ═══════════════════════════════════════════════════════
+let showLabels = true;
+
+function updateLobsters(dt) {
+  const t = performance.now() / 1000;
+  for (const lob of pool) {
+    const { mesh } = lob;
+    lob.bobPhase += dt * 1.3;
+    const bob = Math.sin(lob.bobPhase) * 0.11;
+
+    if (lob.state === 'idle') {
+      // Claw gentle sway
+      const w = Math.sin(lob.bobPhase * 0.6) * 0.12;
+      lob.mesh.userData.claws?.forEach((c,i) => { c.rotation.y = w * (i?-1:1); });
+
+      lob.wanderTimer -= dt;
+      if (lob.wanderTimer <= 0 || mesh.position.distanceTo(lob.wanderTgt) < 0.5) {
+        const r = 3 + Math.random()*4, a = Math.random()*Math.PI*2;
+        lob.wanderTgt.set(
+          THREE.MathUtils.clamp(Math.cos(a)*r, -TANK_W/2+3, TANK_W/2-3),
+          0.42,
+          THREE.MathUtils.clamp(Math.sin(a)*r, -TANK_D/2+3, TANK_D/2-3)
+        );
+        lob.wanderTimer = 3 + Math.random()*4;
+      }
+      const dir = new THREE.Vector3().subVectors(lob.wanderTgt, mesh.position);
+      dir.y = 0;
+      if (dir.length() > 0.15) {
+        dir.normalize();
+        mesh.position.x += dir.x * WANDER_SPEED * dt;
+        mesh.position.z += dir.z * WANDER_SPEED * dt;
+        mesh.rotation.y = THREE.MathUtils.lerp(mesh.rotation.y, Math.atan2(dir.x, dir.z), 0.06);
+      }
+      mesh.position.y = 0.42 + bob * 0.5;
+
+    } else if (lob.state === 'moving') {
+      // Excited claw waggle
+      const w = Math.sin(t * 5) * 0.3;
+      lob.mesh.userData.claws?.forEach((c,i) => { c.rotation.y = w * (i?-1:1); });
+
+      const dir = new THREE.Vector3().subVectors(lob.target, mesh.position);
+      dir.y = 0;
+      const dist = dir.length();
+      if (dist < 0.28) {
+        lob.state      = 'visiting';
+        lob.visitTimer = VISIT_DURATION;
+        mesh.position.copy(lob.target);
+      } else {
+        dir.normalize();
+        const step = Math.min(LOBSTER_SPEED * dt, dist);
+        mesh.position.x += dir.x * step;
+        mesh.position.z += dir.z * step;
+        mesh.position.y  = 0.42 + Math.abs(bob) * 0.85;
+        mesh.rotation.y  = THREE.MathUtils.lerp(mesh.rotation.y, Math.atan2(dir.x, dir.z), 0.14);
+      }
+
+    } else if (lob.state === 'visiting') {
+      // Big excited claw wave at the structure
+      const w = Math.sin(t * 4.5) * 0.55;
+      lob.mesh.userData.claws?.forEach((c,i) => { c.rotation.y = w * (i?-1:1); });
+      mesh.position.y = 0.42 + bob * 0.35;
+
+      lob.visitTimer -= dt;
+      if (lob.visitTimer <= 0) {
+        lob.state      = 'idle';
+        lob.tool       = null;
+        lob.wanderTimer = 0;
+        lob.labelEl.style.display = 'none';
+        recolorLobster(lob.mesh, SOURCE_COLOR.main);
+        lob.source = 'main';
+      }
+    }
+
+    // Label positioning
+    if (showLabels && lob.tool && lob.state !== 'idle') {
+      const sp = mesh.position.clone().project(camera);
+      lob.labelEl.style.display   = 'block';
+      lob.labelEl.style.left      = ((sp.x *  0.5 + 0.5) * innerWidth)  + 'px';
+      lob.labelEl.style.top       = ((sp.y * -0.5 + 0.5) * innerHeight) + 'px';
+    } else {
+      lob.labelEl.style.display = 'none';
+    }
+  }
+}
+
+function updateWorld(dt) {
+  const t = performance.now() / 1000;
+
+  // Animate water surface
+  const wg  = window._waterGeo;
+  const wPos = wg.attributes.position;
+  for (let i = 0; i < wPos.count; i++) {
+    const x = wPos.getX(i), z = wPos.getZ(i);
+    wPos.setY(i, Math.sin(x*0.28 + t*0.75)*0.22 + Math.sin(z*0.38 + t*0.55)*0.16);
+  }
+  wPos.needsUpdate = true;
+  wg.computeVertexNormals();
+
+  // Caustic light drift
+  causticLight.position.x   = Math.sin(t * 0.65) * 9;
+  causticLight.position.z   = Math.cos(t * 0.48) * 9;
+  causticLight.intensity    = 3.0 + Math.sin(t * 2.1) * 1.0;
+
+  // Bubbles
+  for (const b of bubbles) {
+    b.mesh.position.y += b.speed * dt;
+    b.wobble += dt;
+    b.mesh.position.x += Math.sin(b.wobble * 1.4) * 0.018;
+    if (b.mesh.position.y > TANK_H - 0.3) b.reset(b.mesh);
+  }
+
+  // Structure animations
+  for (const [, s] of Object.entries(structures)) {
+    const ud = s.group.userData;
+    // Blink lights
+    if (ud.blink) ud.blink.material.emissiveIntensity = Math.sin(t * 2.2) > 0.4 ? 1 : 0;
+    // Clock gear + hands
+    if (ud.gear)  ud.gear.rotation.z  += dt * 0.28;
+    if (ud.hand1) ud.hand1.rotation.z  = -t * 0.1;
+    if (ud.hand2) ud.hand2.rotation.z  = -t * 0.8;
+    // Terminal glow flicker
+    if (ud.termGlow) ud.termGlow.intensity = 2.0 + Math.sin(t * 7.3 + 1.1) * 0.9;
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+//  RENDER LOOP
+// ═══════════════════════════════════════════════════════
+let lastT = 0;
+(function loop(now) {
+  requestAnimationFrame(loop);
+  const dt = Math.min((now - lastT) / 1000, 0.1);
+  lastT = now;
+  controls.update();
+  updateLobsters(dt);
+  updateWorld(dt);
+  renderer.render(scene, camera);
+})();
+
+// ═══════════════════════════════════════════════════════
+//  WEBSOCKET
+// ═══════════════════════════════════════════════════════
+const statusEl = document.getElementById('status');
+let ws = null;
+
+function connect() {
+  ws = new WebSocket(`ws://${location.host}`);
+  ws.onopen    = () => { statusEl.textContent = '🟢 Live'; };
+  ws.onmessage = e => {
+    try {
+      const ev = JSON.parse(e.data);
+      if (ev.tool) dispatchTool(ev.tool, ev.source || 'main');
+    } catch {}
+  };
+  ws.onclose = () => {
+    statusEl.textContent = '🔴 Disconnected — retrying…';
+    setTimeout(connect, 3000);
+  };
+}
+connect();
+
+// ═══════════════════════════════════════════════════════
+//  UI CONTROLS
+// ═══════════════════════════════════════════════════════
+
+// Label toggle
+document.getElementById('btn-labels').addEventListener('click', e => {
+  showLabels = !showLabels;
+  e.target.textContent = showLabels ? 'Labels ON' : 'Labels OFF';
+  e.target.classList.toggle('active', showLabels);
+  if (!showLabels) pool.forEach(l => { l.labelEl.style.display = 'none'; });
+});
+
+// Demo mode — fires synthetic events locally, no server needed
+const DEMO_TOOLS = Object.keys(TOOL_STRUCTURE);
+const DEMO_SRC   = ['main','main','main','main','cron','cron','subagent'];
+let demoTimer = null;
+
+document.getElementById('btn-demo').addEventListener('click', e => {
+  if (demoTimer) {
+    clearTimeout(demoTimer); demoTimer = null;
+    e.target.textContent = 'Demo Mode'; e.target.classList.remove('active');
+  } else {
+    e.target.textContent = 'Demo: ON'; e.target.classList.add('active');
+    statusEl.textContent = '🎬 Demo';
+    const fire = () => {
+      dispatchTool(
+        DEMO_TOOLS[Math.floor(Math.random() * DEMO_TOOLS.length)],
+        DEMO_SRC[Math.floor(Math.random() * DEMO_SRC.length)]
+      );
+      demoTimer = setTimeout(fire, 600 + Math.random() * 2800);
+    };
+    fire();
+  }
+});
+
+// Resize
+window.addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>

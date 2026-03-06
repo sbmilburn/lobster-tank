@@ -1,0 +1,13 @@
+{
+  "name": "lobster-tank",
+  "version": "1.0.0",
+  "description": "🦞 Viernes Activity Monitor — 3D aquarium visualizing AI tool calls",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "demo": "node server.js --demo"
+  },
+  "dependencies": {
+    "ws": "^8.16.0"
+  }
+}
