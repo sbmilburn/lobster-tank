@@ -105,10 +105,10 @@ Sessions are classified by checking if the session UUID appears in `~/.openclaw/
 
 **Phases:**
 1. ✅ Foundation — log format research, initial build
-2. 🔄 GitHub + tracking — public repo, Trello board, README
-3. ⬜ Polish — lobster visuals, structure details, floor labels
-4. ⬜ Demo content — real event recording from a busy session
-5. ⬜ Hosting — live feed from viernode to public website
+2. ✅ GitHub + tracking — public repo, README
+3. ✅ Polish — lobster visuals, structure details, floor labels
+4. ✅ Demo content — real event recording from a busy session
+5. ⬜ Hosting — live feed from localnode to public website
 6. ⬜ Showcase — embed in a show-n-tell website
 
 ---
@@ -122,10 +122,10 @@ Goal: public website showing either **live** (Viernes actively working) or **dem
 | Approach | Pros | Cons |
 |----------|------|------|
 | **Tailscale tunnel** | True real-time, simple auth | Website depends on viernode uptime |
-| **Push relay** | Real-time, viernode-initiated (no inbound), website independent | Needs relay server infra |
+| **Push relay** | Real-time, localnode-initiated (no inbound), website independent | Needs relay server infra |
 | **Periodic SCP sync** | Simple, decoupled | ~30s lag, not truly live |
 
-Leaning toward **push relay**: viernode's watcher pushes events via persistent WebSocket to the hosted server, which fans them out to browsers. Graceful degradation to demo mode when viernode is offline.
+Leaning toward **push relay**: localnode's watcher pushes events via persistent WebSocket to the hosted server, which fans them out to browsers. Graceful degradation to demo mode when viernode is offline.
 
 ---
 
