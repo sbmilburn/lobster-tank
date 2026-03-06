@@ -99,8 +99,6 @@ Sessions are classified by checking if the session UUID appears in `~/.openclaw/
 
 ## Project Plan
 
-See the [Trello board](https://trello.com/b/4OiOtLhg/lobster-tank) for current status.
-
 **Phases:**
 1. ✅ Foundation — log format research, initial build
 2. 🔄 GitHub + tracking — public repo, Trello board, README
@@ -137,4 +135,4 @@ Leaning toward **push relay**: viernode's watcher pushes events via persistent W
 
 ## License
 
-MIT — open source, use it however you like.
+MIT — Copyright (c) 2026 Shane Milburn & Viernes AI. See [LICENSE](LICENSE) for details.
