@@ -112,7 +112,7 @@ function broadcast(event) {
 }
 
 // ---------------------------------------------------------------------------
-// Live mode — watch sessions directory
+// Live mode — poll sessions directory every 1.5s (reliable on Linux)
 // ---------------------------------------------------------------------------
 function watchSessions() {
   refreshCronIds();
@@ -125,14 +125,25 @@ function watchSessions() {
     try { fileCursors.set(fp, fs.statSync(fp).size); } catch {}
   }
 
-  fs.watch(SESSIONS_DIR, { persistent: true }, (eventType, filename) => {
-    if (!filename || !filename.endsWith('.jsonl')) return;
-    const fp     = path.join(SESSIONS_DIR, filename);
-    const source = classifySession(fp);
-    processNewBytes(fp, source, broadcast);
-  });
+  // Poll for changes — fs.watch misses writes to existing files on Linux
+  setInterval(() => {
+    let files;
+    try { files = fs.readdirSync(SESSIONS_DIR); } catch { return; }
+    for (const file of files) {
+      if (!file.endsWith('.jsonl')) continue;
+      const fp = path.join(SESSIONS_DIR, file);
+      try {
+        const size = fs.statSync(fp).size;
+        const cursor = fileCursors.get(fp) ?? 0;
+        if (size > cursor) {
+          const source = classifySession(fp);
+          processNewBytes(fp, source, broadcast);
+        }
+      } catch {}
+    }
+  }, 1500);
 
-  console.log(`👁  Watching ${SESSIONS_DIR}`);
+  console.log(`👁  Watching ${SESSIONS_DIR} (polling every 1.5s)`);
 }
 
 // ---------------------------------------------------------------------------
