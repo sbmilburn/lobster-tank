@@ -6,7 +6,7 @@
 <title>🦞 Lobster Tank — Viernes Activity Monitor</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { background: #000d1a; overflow: hidden; font-family: 'Courier New', monospace; }
+  body { background: #001a33; overflow: hidden; font-family: 'Courier New', monospace; }
   canvas { display: block; }
 
   /* ---------- UI panels ---------- */
@@ -63,6 +63,16 @@
   }
   @keyframes slideIn { from { opacity: 0; transform: translateX(8px); } to { opacity: 1; transform: none; } }
 
+  /* ---------- Structure labels ---------- */
+  .struct-label {
+    position: fixed; z-index: 40; pointer-events: none;
+    color: rgba(180, 230, 255, 0.85);
+    font-size: 11px; font-family: 'Courier New', monospace;
+    white-space: nowrap; letter-spacing: 0.5px;
+    text-shadow: 0 0 8px rgba(80, 180, 255, 0.8), 0 1px 3px rgba(0,0,0,0.9);
+    transform: translate(-50%, -50%);
+  }
+
   /* ---------- Lobster labels ---------- */
   .lob-label {
     position: fixed; z-index: 50; pointer-events: none; display: none;
@@ -75,7 +85,7 @@
 </head>
 <body>
 
-<div id="title"><h1>🦞 Lobster Tank</h1><p>Viernes Activity Monitor</p></div>
+<div id="title"><h1>🦞 Lobster Tank</h1><p id="agent-subtitle"></p></div>
 
 <div id="ui">
   <button class="btn active" id="btn-labels">Labels ON</button>
@@ -83,12 +93,13 @@
 </div>
 
 <div id="legend">
-  <div class="leg"><div class="dot" style="background:#ff5500"></div>Main session</div>
+  <div class="leg"><div class="dot" style="background:#dd2200"></div>Main session</div>
   <div class="leg"><div class="dot" style="background:#ffaa00"></div>Cron job</div>
   <div class="leg"><div class="dot" style="background:#bb44ff"></div>Subagent</div>
 </div>
 
 <div id="status">🔌 Connecting…</div>
+
 <div id="log"></div>
 
 <script type="importmap">
@@ -106,14 +117,18 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 // ═══════════════════════════════════════════════════════
 //  CONFIG
 // ═══════════════════════════════════════════════════════
+// ── Customize this to your OpenClaw agent's name ──────────────────────────
+const AGENT_NAME = 'Viernes';
+// ──────────────────────────────────────────────────────────────────────────
+
 const TANK_W = 34, TANK_D = 34, TANK_H = 13;
 const LOBSTER_COUNT = 6;
 const LOBSTER_SPEED  = 4.5;   // units / sec while going to structure
 const WANDER_SPEED   = 0.9;   // units / sec while idle
 const VISIT_DURATION = 2.8;   // seconds parked at a structure
 
-const SOURCE_COLOR = { main: 0xff5500, cron: 0xffaa00, subagent: 0xbb44ff };
-const SOURCE_CSS   = { main: '#ff6633', cron: '#ffaa00', subagent: '#cc55ff' };
+const SOURCE_COLOR = { main: 0xdd2200, cron: 0xffaa00, subagent: 0xbb44ff };
+const SOURCE_CSS   = { main: '#dd2200', cron: '#ffaa00', subagent: '#cc55ff' };
 
 const TOOL_STRUCTURE = {
   web_search:'internet', web_fetch:'internet', browser:'internet',
@@ -149,19 +164,19 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 0.85;
+renderer.toneMappingExposure = 1.4;
 document.body.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x001020);
-scene.fog = new THREE.FogExp2(0x001428, 0.016);
+scene.background = new THREE.Color(0x003055);
+scene.fog = new THREE.FogExp2(0x002244, 0.007);
 
 const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.1, 200);
-camera.position.set(0, 22, 38);
-camera.lookAt(0, 0, 0);
+camera.position.set(0, 18, 32);
+camera.lookAt(0, 2, 0);
 
 const controls = new OrbitControls(camera, renderer.domElement);
-controls.target.set(0, 3, 0);
+controls.target.set(0, 2, 0);
 controls.enableDamping = true;
 controls.dampingFactor = 0.07;
 controls.minDistance = 8;
@@ -170,16 +185,16 @@ controls.maxPolarAngle = Math.PI / 2.05;
 controls.update();
 
 // Lights
-scene.add(new THREE.AmbientLight(0x002244, 2.0));
+scene.add(new THREE.AmbientLight(0x4488bb, 3.5));
 
-const sun = new THREE.DirectionalLight(0x5599cc, 2.2);
+const sun = new THREE.DirectionalLight(0x88ccff, 4.0);
 sun.position.set(8, 25, 10);
 sun.castShadow = true;
 Object.assign(sun.shadow.camera, { left:-22, right:22, top:22, bottom:-22, near:1, far:70 });
 sun.shadow.mapSize.setScalar(1024);
 scene.add(sun);
 
-const causticLight = new THREE.PointLight(0x1155aa, 4, 35);
+const causticLight = new THREE.PointLight(0x44aaff, 6, 45);
 causticLight.position.set(5, 11, 5);
 scene.add(causticLight);
 
@@ -189,7 +204,7 @@ scene.add(causticLight);
 (function buildTank() {
   // Glass walls
   const glassMat = new THREE.MeshPhongMaterial({
-    color: 0x0066aa, transparent: true, opacity: 0.10,
+    color: 0x2299dd, transparent: true, opacity: 0.15,
     side: THREE.BackSide, depthWrite: false,
   });
   const box = new THREE.Mesh(new THREE.BoxGeometry(TANK_W, TANK_H, TANK_D), glassMat);
@@ -203,7 +218,7 @@ scene.add(causticLight);
     fPos.setY(i, Math.sin(fPos.getX(i) * 0.5) * 0.12 + Math.sin(fPos.getZ(i) * 0.7) * 0.08);
   }
   floorGeo.computeVertexNormals();
-  const floor = new THREE.Mesh(floorGeo, new THREE.MeshPhongMaterial({ color: 0xc8a040, shininess: 8 }));
+  const floor = new THREE.Mesh(floorGeo, new THREE.MeshPhongMaterial({ color: 0xe8c060, shininess: 12 }));
   floor.rotation.x = -Math.PI / 2;
   floor.receiveShadow = true;
   scene.add(floor);
@@ -211,7 +226,7 @@ scene.add(causticLight);
   // Water surface
   const waterGeo = new THREE.PlaneGeometry(TANK_W, TANK_D, 32, 32);
   const water = new THREE.Mesh(waterGeo, new THREE.MeshPhongMaterial({
-    color: 0x0077cc, transparent: true, opacity: 0.30, shininess: 220,
+    color: 0x22aaee, transparent: true, opacity: 0.25, shininess: 220,
   }));
   water.rotation.x = -Math.PI / 2;
   water.position.y = TANK_H;
@@ -402,6 +417,169 @@ function mesh(geo, mat) { const m = new THREE.Mesh(geo, mat); m.castShadow = tru
 buildStructures();
 
 // ═══════════════════════════════════════════════════════
+//  SEAWEED
+// ═══════════════════════════════════════════════════════
+const seaweedStrands = [];
+
+function buildSeaweed() {
+  // Seaweed clusters scattered around edges, avoiding structure positions
+  const clusters = [
+    { x: -14, z:  5 }, { x: -14, z: -5 }, { x:  14, z:  5 }, { x:  14, z: -5 },
+    { x:  -5, z: 14 }, { x:   5, z: 14 }, { x:  -5, z:-14 }, { x:   5, z:-14 },
+    { x: -10, z:  0 }, { x:  10, z:  0 }, { x:   0, z:  8 }, { x:  -8, z:  8 },
+    { x:   8, z: -8 }, { x:  -8, z: -8 },
+  ];
+
+  const greenShades = [0x1a7a2a, 0x228833, 0x2d9944, 0x1a6622, 0x33aa44, 0x0d5c1e];
+
+  for (const cluster of clusters) {
+    const count = 3 + Math.floor(Math.random() * 4);
+    for (let s = 0; s < count; s++) {
+      const strand = buildStrand(
+        cluster.x + (Math.random() - 0.5) * 3,
+        cluster.z + (Math.random() - 0.5) * 3,
+        greenShades[Math.floor(Math.random() * greenShades.length)],
+        2.5 + Math.random() * 3.5   // height
+      );
+      seaweedStrands.push(strand);
+    }
+  }
+}
+
+function buildStrand(x, z, color, totalHeight) {
+  const segments = 5;
+  const segH     = totalHeight / segments;
+  const mat       = new THREE.MeshPhongMaterial({ color, flatShading: true, side: THREE.DoubleSide });
+  const strandGroup = new THREE.Group();
+  strandGroup.position.set(x, 0, z);
+  scene.add(strandGroup);
+
+  const segGroups = [];
+  let parent = strandGroup;
+
+  for (let i = 0; i < segments; i++) {
+    const g = new THREE.Group();
+    g.position.y = i === 0 ? 0 : segH;
+
+    // Leaf blade shape: thin tapered box, slightly randomised width
+    const width = 0.18 + Math.random() * 0.12 - i * 0.02;
+    const geo   = new THREE.BoxGeometry(Math.max(0.06, width), segH, 0.04);
+    const blade = new THREE.Mesh(geo, mat);
+    blade.position.y = segH / 2;
+    blade.castShadow = false;
+    g.add(blade);
+
+    parent.add(g);
+    parent = g;
+    segGroups.push(g);
+  }
+
+  const phase  = Math.random() * Math.PI * 2;
+  const speed  = 0.4 + Math.random() * 0.4;
+  const sway   = 0.08 + Math.random() * 0.1;
+
+  return { segGroups, phase, speed, sway };
+}
+
+buildSeaweed();
+
+// ═══════════════════════════════════════════════════════
+//  CORAL REEFS
+// ═══════════════════════════════════════════════════════
+function buildCoral() {
+  const coralColors = [0xff6633, 0xff88aa, 0xdd3333, 0xcc44bb, 0xffcc22, 0xee8833, 0xff55aa];
+
+  const spots = [
+    { x:  6, z:  6 }, { x: -6, z:  6 }, { x:  6, z: -6 }, { x: -6, z: -6 },
+    { x:  9, z:  2 }, { x: -9, z: -2 }, { x:  2, z:  9 }, { x: -2, z: -9 },
+    { x:  7, z: -9 }, { x: -7, z:  9 },
+  ];
+
+  for (const spot of spots) {
+    const col = coralColors[Math.floor(Math.random() * coralColors.length)];
+    const type = Math.floor(Math.random() * 3);
+    const g = new THREE.Group();
+    g.position.set(spot.x + (Math.random()-0.5)*2, 0, spot.z + (Math.random()-0.5)*2);
+
+    if (type === 0) buildBranchCoral(g, col);
+    else if (type === 1) buildTubeCoral(g, col);
+    else buildMushroomCoral(g, col);
+
+    scene.add(g);
+  }
+}
+
+function buildBranchCoral(g, color) {
+  const mat = new THREE.MeshPhongMaterial({ color, flatShading: true });
+  // Main trunk
+  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.14, 1.2, 6), mat);
+  trunk.position.y = 0.6; g.add(trunk);
+  // Branches
+  const branchData = [
+    [0.3, 0.9, 0.6, 40], [-0.3, 0.9, 0.5, -35], [0.2, 0.7, 0.5, 25],
+    [-0.2, 0.75, 0.45, -28], [0.1, 1.05, 0.4, 15],
+  ];
+  for (const [x, y, h, angle] of branchData) {
+    const branch = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.07, h, 5), mat);
+    branch.position.set(x * 0.8, y, x * 0.4);
+    branch.rotation.z = THREE.MathUtils.degToRad(angle);
+    g.add(branch);
+    // Tip bulb
+    const tip = new THREE.Mesh(new THREE.SphereGeometry(0.07, 5, 4), mat);
+    tip.position.set(x * 0.8 + Math.sin(THREE.MathUtils.degToRad(angle)) * h * 0.5,
+                     y + Math.cos(THREE.MathUtils.degToRad(angle)) * h * 0.5,
+                     x * 0.4);
+    g.add(tip);
+  }
+}
+
+function buildTubeCoral(g, color) {
+  const mat = new THREE.MeshPhongMaterial({ color, flatShading: true });
+  const count = 4 + Math.floor(Math.random() * 5);
+  for (let i = 0; i < count; i++) {
+    const h = 0.6 + Math.random() * 1.4;
+    const r = 0.04 + Math.random() * 0.05;
+    const tube = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.6, r, h, 7, 1, true), mat);
+    const ox = (Math.random()-0.5) * 1.2;
+    const oz = (Math.random()-0.5) * 1.2;
+    tube.position.set(ox, h/2, oz);
+    g.add(tube);
+    // Open top rim
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(r * 0.65, r * 0.25, 4, 8),
+      new THREE.MeshPhongMaterial({ color, flatShading: true }));
+    rim.position.set(ox, h, oz);
+    rim.rotation.x = Math.PI / 2;
+    g.add(rim);
+  }
+}
+
+function buildMushroomCoral(g, color) {
+  const mat = new THREE.MeshPhongMaterial({ color, flatShading: true });
+  // Stalk
+  const stalk = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.18, 0.5, 7), mat);
+  stalk.position.y = 0.25; g.add(stalk);
+  // Cap — flattened hemisphere
+  const cap = new THREE.Mesh(new THREE.SphereGeometry(0.6, 10, 6, 0, Math.PI*2, 0, Math.PI*0.5), mat);
+  cap.position.y = 0.5; g.add(cap);
+  // Underside (flat disc)
+  const under = new THREE.Mesh(new THREE.CircleGeometry(0.58, 10),
+    new THREE.MeshPhongMaterial({ color, flatShading: true, side: THREE.BackSide }));
+  under.rotation.x = Math.PI / 2;
+  under.position.y = 0.51; g.add(under);
+  // Ridges on cap
+  for (let i = 0; i < 6; i++) {
+    const angle = (i / 6) * Math.PI * 2;
+    const ridge = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 0.55),
+      new THREE.MeshPhongMaterial({ color: new THREE.Color(color).multiplyScalar(0.8).getHex(), flatShading: true }));
+    ridge.position.set(Math.cos(angle)*0.3, 0.56, Math.sin(angle)*0.3);
+    ridge.rotation.y = angle;
+    g.add(ridge);
+  }
+}
+
+buildCoral();
+
+// ═══════════════════════════════════════════════════════
 //  LOBSTER FACTORY
 // ═══════════════════════════════════════════════════════
 function createLobster(hexColor) {
@@ -412,8 +590,8 @@ function createLobster(hexColor) {
 
   const c   = new THREE.Color(hexColor);
   const cd  = c.clone().multiplyScalar(0.55);
-  const mat  = new THREE.MeshPhongMaterial({ color: c,  flatShading: true });
-  const matD = new THREE.MeshPhongMaterial({ color: cd, flatShading: true });
+  const mat  = new THREE.MeshPhongMaterial({ color: c,  flatShading: true, emissive: c, emissiveIntensity: 0.25 });
+  const matD = new THREE.MeshPhongMaterial({ color: cd, flatShading: true, emissive: cd, emissiveIntensity: 0.2 });
   const matE = new THREE.MeshPhongMaterial({ color: 0x111111, shininess:200 });
   const matW = new THREE.MeshPhongMaterial({ color: 0xffffff });
 
@@ -463,15 +641,42 @@ function createLobster(hexColor) {
     }
   }
 
-  // Eye stalks + eyes
+  // Eye stalks + cartoon eyes
+  const matIris = new THREE.MeshPhongMaterial({ color: 0x2266ee, flatShading: false });
   for (const side of [-1, 1]) {
-    const stalk = M(new THREE.CylinderGeometry(0.038, 0.038, 0.28, 4), matD);
-    stalk.position.set(1.14, 0.3, side * 0.23); stalk.rotation.z = -side * 0.35;
+    // Stalk (longer to support big eyes)
+    const stalk = M(new THREE.CylinderGeometry(0.05, 0.05, 0.35, 6), matD);
+    stalk.position.set(1.1, 0.28, side * 0.24);
+    stalk.rotation.z = -side * 0.3;
     g.add(stalk);
-    const eye = M(new THREE.SphereGeometry(0.1, 6, 6), matE);
-    eye.position.set(1.15 + side*0.05, 0.48, side * 0.23); g.add(eye);
-    const hi = M(new THREE.SphereGeometry(0.036, 4, 4), matW);
-    hi.position.set(1.16 + side*0.05 + 0.06, 0.51, side * 0.23 + 0.04); g.add(hi);
+
+    const eyeX = 1.12 + side * 0.04;
+    const eyeY = 0.54;
+    const eyeZ = side * 0.24;
+
+    // White sclera — big and round
+    const sclera = M(new THREE.SphereGeometry(0.2, 10, 8), matW);
+    sclera.position.set(eyeX, eyeY, eyeZ);
+    g.add(sclera);
+
+    // Coloured iris
+    const iris = M(new THREE.SphereGeometry(0.13, 8, 8), matIris);
+    iris.position.set(eyeX + 0.14, eyeY + 0.04, eyeZ);
+    g.add(iris);
+
+    // Black pupil
+    const pupil = M(new THREE.SphereGeometry(0.09, 8, 8), matE);
+    pupil.position.set(eyeX + 0.21, eyeY + 0.06, eyeZ);
+    g.add(pupil);
+
+    // Catchlight — flat disc flush on pupil surface, always bright white
+    const shine = new THREE.Mesh(
+      new THREE.CircleGeometry(0.045, 8),
+      new THREE.MeshBasicMaterial({ color: 0xffffff })
+    );
+    shine.position.set(eyeX + 0.3, eyeY + 0.1, eyeZ - 0.03);
+    shine.rotation.y = -Math.PI / 2; // face forward (+X)
+    g.add(shine);
   }
 
   // Antennae (thin curves)
@@ -496,16 +701,16 @@ function createLobster(hexColor) {
 function createClaw(mat, matD) {
   const g = new THREE.Group();
   const M = (geo, m) => { const o = new THREE.Mesh(geo, m); o.castShadow = true; return o; };
-  const arm = M(new THREE.CylinderGeometry(0.07, 0.1, 0.72, 5), mat);
-  arm.rotation.z = Math.PI/2; arm.position.set(0.36, 0, 0); g.add(arm);
+  const arm = M(new THREE.CylinderGeometry(0.07, 0.1, 0.5, 5), mat);
+  arm.rotation.z = Math.PI/2; arm.position.set(0.25, 0, 0); g.add(arm);
   const wrist = M(new THREE.SphereGeometry(0.16, 6, 5), mat);
-  wrist.position.set(0.82, 0, 0); g.add(wrist);
+  wrist.position.set(0.60, 0, 0); g.add(wrist);
   const palm = M(new THREE.SphereGeometry(0.22, 7, 5), mat);
-  palm.scale.set(1.6, 0.78, 0.88); palm.position.set(1.22, 0, 0); g.add(palm);
+  palm.scale.set(1.6, 0.78, 0.88); palm.position.set(1.00, 0, 0); g.add(palm);
   const p1 = M(new THREE.BoxGeometry(0.44, 0.11, 0.13), mat);
-  p1.position.set(1.58, 0.13, 0); p1.rotation.z = 0.38; g.add(p1);
+  p1.position.set(1.36, 0.13, 0); p1.rotation.z = 0.38; g.add(p1);
   const p2 = M(new THREE.BoxGeometry(0.37, 0.1, 0.13), matD);
-  p2.position.set(1.52, -0.1, 0); p2.rotation.z = -0.38; g.add(p2);
+  p2.position.set(1.30, -0.1, 0); p2.rotation.z = -0.38; g.add(p2);
   return g;
 }
 
@@ -513,7 +718,12 @@ function recolorLobster(lobster, hexColor) {
   const c  = new THREE.Color(hexColor);
   const cd = c.clone().multiplyScalar(0.55);
   lobster.userData.mat.color.set(c);
+  lobster.userData.mat.emissive.set(c);
   lobster.userData.matD.color.set(cd);
+  lobster.userData.matD.emissive.set(cd);
+  // Update the glow light color too
+  const poolEntry = pool.find(l => l.mesh === lobster);
+  if (poolEntry?.glow) poolEntry.glow.color.set(c);
 }
 
 // ═══════════════════════════════════════════════════════
@@ -524,12 +734,17 @@ const pool = [];
 (function spawnPool() {
   for (let i = 0; i < LOBSTER_COUNT; i++) {
     const lob = createLobster(SOURCE_COLOR.main);
-    lob.scale.setScalar(0.78);
+    lob.scale.setScalar(1.3);
     const x = (Math.random()-0.5) * TANK_W * 0.45;
     const z = (Math.random()-0.5) * TANK_D * 0.45;
     lob.position.set(x, 0.42, z);
     lob.rotation.y = Math.random() * Math.PI * 2;
     scene.add(lob);
+
+    // Glow light attached to each lobster — always visible regardless of geometry
+    const glow = new THREE.PointLight(SOURCE_COLOR.main, 0, 8);
+    glow.position.set(0, 1.5, 0);
+    lob.add(glow);
 
     const labelEl = document.createElement('div');
     labelEl.className = 'lob-label';
@@ -537,7 +752,8 @@ const pool = [];
 
     pool.push({
       mesh:        lob,
-      state:       'idle',            // 'idle' | 'moving' | 'visiting'
+      glow,
+      state:       'idle',
       target:      null,
       wanderTgt:   new THREE.Vector3(x, 0.42, z),
       wanderTimer: Math.random() * 3,
@@ -558,6 +774,7 @@ function getIdleLobster() {
 }
 
 function dispatchTool(toolName, source) {
+
   const sid = TOOL_STRUCTURE[toolName];
   if (!sid || !structures[sid]) return;
   const lobster = getIdleLobster();
@@ -600,6 +817,12 @@ function updateLobsters(dt) {
     const { mesh } = lob;
     lob.bobPhase += dt * 1.3;
     const bob = Math.sin(lob.bobPhase) * 0.11;
+
+    // Glow: dim when idle, bright when moving/visiting
+    if (lob.glow) {
+      const targetIntensity = lob.state === 'idle' ? 0.4 : lob.state === 'visiting' ? 3.5 : 2.0;
+      lob.glow.intensity = THREE.MathUtils.lerp(lob.glow.intensity, targetIntensity, 0.08);
+    }
 
     if (lob.state === 'idle') {
       // Claw gentle sway
@@ -702,6 +925,32 @@ function updateWorld(dt) {
     if (b.mesh.position.y > TANK_H - 0.3) b.reset(b.mesh);
   }
 
+  // Seaweed sway
+  for (const strand of seaweedStrands) {
+    for (let i = 0; i < strand.segGroups.length; i++) {
+      const seg    = strand.segGroups[i];
+      const weight = (i + 1) / strand.segGroups.length; // tip sways more
+      seg.rotation.z = Math.sin(t * strand.speed + strand.phase + i * 0.4) * strand.sway * weight;
+      seg.rotation.x = Math.sin(t * strand.speed * 0.7 + strand.phase + i * 0.3) * strand.sway * weight * 0.5;
+    }
+  }
+
+  // Structure name label positions
+  for (const [, s] of Object.entries(structures)) {
+    if (s.nameLabel) {
+      const labelPos = s.group.position.clone();
+      labelPos.y = 0.4; // pin to base of structure
+      const sp = labelPos.project(camera);
+      if (sp.z < 1) { // in front of camera
+        s.nameLabel.style.display = 'block';
+        s.nameLabel.style.left = ((sp.x *  0.5 + 0.5) * innerWidth)  + 'px';
+        s.nameLabel.style.top  = ((sp.y * -0.5 + 0.5) * innerHeight) + 'px';
+      } else {
+        s.nameLabel.style.display = 'none';
+      }
+    }
+  }
+
   // Structure animations
   for (const [, s] of Object.entries(structures)) {
     const ud = s.group.userData;
@@ -720,7 +969,7 @@ function updateWorld(dt) {
 //  RENDER LOOP
 // ═══════════════════════════════════════════════════════
 let lastT = 0;
-(function loop(now) {
+function loop(now) {
   requestAnimationFrame(loop);
   const dt = Math.min((now - lastT) / 1000, 0.1);
   lastT = now;
@@ -728,11 +977,25 @@ let lastT = 0;
   updateLobsters(dt);
   updateWorld(dt);
   renderer.render(scene, camera);
-})();
+}
+requestAnimationFrame(loop);
 
 // ═══════════════════════════════════════════════════════
 //  WEBSOCKET
 // ═══════════════════════════════════════════════════════
+// Set agent name in title
+document.getElementById('agent-subtitle').textContent = `${AGENT_NAME} Activity Monitor`;
+document.title = `🦞 Lobster Tank — ${AGENT_NAME}`;
+
+// Create persistent structure name labels
+for (const [id, s] of Object.entries(structures)) {
+  const el = document.createElement('div');
+  el.className = 'struct-label';
+  el.textContent = s.def.label;
+  document.body.appendChild(el);
+  s.nameLabel = el;
+}
+
 const statusEl = document.getElementById('status');
 let ws = null;
 
