@@ -14,7 +14,7 @@ When your AI assistant (running on [OpenClaw](https://openclaw.ai)) does things 
 
 ## What It Looks Like
 
-Six cartoonish 3D lobsters drift around an aquarium. Each time the AI makes a tool call, one of them scuttles purposefully toward a matching structure, wiggles its claws excitedly at arrival, then wanders back.
+Cartoonish 3D lobsters drift around an aquarium. Each time the AI makes a tool call, one of them scuttles purposefully toward a matching structure, wiggles its claws excitedly at arrival, then wanders back.
 
 **Tank structures:**
 
