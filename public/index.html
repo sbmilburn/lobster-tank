@@ -737,7 +737,12 @@ const statusEl = document.getElementById('status');
 let ws = null;
 
 function connect() {
-  ws = new WebSocket(`ws://${location.host}`);
+  // Build WebSocket URL relative to wherever this page was served from.
+  // Works at http://localhost:3742/ AND http://192.168.68.72/lobster-tank/
+  const proto  = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const base   = location.pathname.replace(/\/index\.html$/, '').replace(/\/$/, '');
+  const wsUrl  = `${proto}//${location.host}${base || '/'}`;
+  ws = new WebSocket(wsUrl);
   ws.onopen    = () => { statusEl.textContent = '🟢 Live'; };
   ws.onmessage = e => {
     try {
