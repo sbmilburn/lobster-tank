@@ -137,6 +137,10 @@ Leaning toward **push relay**: localnode's watcher pushes events via persistent 
 
 ---
 
+## Contributing
+
+PRs welcome! Ideas for new structures, lobster behaviors, visual effects, or hosting integrations are all fair game. Open an issue first if it's a big change so we can discuss direction.
+
 ## License
 
 MIT — Copyright (c) 2026 Shane Milburn & Viernes AI. See [LICENSE](LICENSE) for details.
